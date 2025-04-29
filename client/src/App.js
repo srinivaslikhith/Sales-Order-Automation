@@ -1,19 +1,17 @@
-// src/App.js
 import React, { useState } from 'react';
 import 'antd/dist/reset.css';
 import { Layout, Tabs, Button, Table, Modal, Input, Form, Select, Spin } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
-import { Document, Page } from 'react-pdf';
 import axios from 'axios';
 
 const { Sider, Content } = Layout;
 const { TabPane } = Tabs;
 const { Option } = Select;
 
+
 export default function App() {
   // PDF & loading
   const [file, setFile] = useState(null);
-  const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(false);
 
   // Extracted header fields
@@ -30,11 +28,6 @@ export default function App() {
   // Modal editing (optional deeper edits)
   const [editingItem, setEditingItem] = useState(null);
 
-  // PDF loader
-  function onDocumentLoadSuccess({ numPages }) {
-    setNumPages(numPages);
-  }
-
   // 1) Handle “Generate Mapping”
   async function handleUpload() {
     if (!file) return;
@@ -45,21 +38,32 @@ export default function App() {
       form.append('file', file);
 
       // TODO: point to your real Flask URL
-      const res = await axios.post('http://localhost:5000/api/upload', form, {
+      const res = await axios.post('http://127.0.0.1:8002/api/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      // Expect { header: {...}, lineItems: [...] }
-      const { header, lineItems } = res.data;
+      // Expect { lineItems: [...] } with suggestions included
+      const { lineItems } = res.data;
 
-      setExtractData(header);
+      // Optionally clear extractData if needed:
+      // setExtractData({ requestId:'', address:'', poDate:'', poNumber:'' });
+
       setItems(
-        lineItems.map((li, idx) => ({
-          key: idx,
-          original: li.original,
-          suggestions: li.suggestions,
-          selected: li.suggestions[0]?.id || ''
-        }))
+        lineItems.map((li, idx) => {
+          const originalText = typeof li.original === 'object' && li.original['Request Item']
+            ? li.original['Request Item']
+            : li.original;
+          const mappedSugg = (li.suggestions || []).map(s => ({
+            id: s.match,
+            name: s.match
+          }));
+          return {
+            key: idx,
+            original: originalText,
+            suggestions: mappedSugg,
+            selected: mappedSugg[0]?.id || ''
+          };
+        })
       );
     } catch (err) {
       console.error(err);
@@ -137,52 +141,33 @@ export default function App() {
     <Layout style={{ height: '100vh' }}>
       {/* Left: PDF preview / upload dropzone */}
       <Sider width="50%" style={{ background: '#f0f2f5', overflow: 'auto' }}>
-        {file
-          ? (
-            <Document
-              file={file}
-              onLoadSuccess={onDocumentLoadSuccess}
-              loading={<Spin tip="Loading PDF..." />}
-            >
-              {Array.from({ length: numPages }, (_, i) =>
-                <Page
-                  key={i}
-                  pageNumber={i + 1}
-                  width={600}
-                  loading={null}
-                />
-              )}
-            </Document>
-          ) : (
-            <div
-              style={{
-                height: '100%',
-                border: '2px dashed #ccc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-                color: '#999'
-              }}
-            >
-              Drag PDF here or click to upload
-              <input
-                type="file"
-                accept="application/pdf"
-                style={{
-                  position: 'absolute',
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0,
-                  cursor: 'pointer'
-                }}
-                onChange={e => {
-                  if (e.target.files.length) setFile(e.target.files[0]);
-                }}
-              />
-            </div>
-          )
-        }
+        <div
+          style={{
+            height: '100%',
+            border: '2px dashed #ccc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            color: '#999'
+          }}
+        >
+          <span>{file ? file.name : "Drag PDF here or click to upload"}</span>
+          <input
+            type="file"
+            accept="application/pdf"
+            style={{
+              position: 'absolute',
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer'
+            }}
+            onChange={e => {
+              if (e.target.files.length) setFile(e.target.files[0]);
+            }}
+          />
+        </div>
       </Sider>
 
       {/* Right: Tabs */}
